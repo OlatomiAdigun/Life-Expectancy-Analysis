@@ -1,0 +1,1216 @@
+---
+title: "DATA 603 Final Report"
+author: "Chenguang Sun - 30225609, Rookayat Adedo - 30181509, Olatomi Adigun -30235750, Yutong Zhang - 30052929"
+date: "2023-12-07"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, include=FALSE}
+library(binom)
+library(collapsibleTree)
+library(dbplyr)
+library(dplyr)
+library(EnvStats)
+library(ggformula)
+library(ggplot2)
+library(gmodels)
+library(htmltools)
+library(ISLR)
+library(knitr)
+library(lawstat)
+library(markdown)
+library(mosaic)
+library(mdsr)
+library(mosaicData)
+library(olsrr)
+library(plyr)
+library(purrr)
+library(plotly)
+library(resampledata)
+library(rmarkdown)
+library(rpart)
+library(rpart.plot)
+library(rvest)
+library(SDaA)
+library(shiny)
+library(stringi)
+library(tibble)
+library(tidyr)
+library(tidyselect)
+library(tinytex)
+library(yaml)
+library(shiny)
+```
+
+```{r include=FALSE}
+#read the file
+Life.expectancy_raw<- read.csv("Life Expectancy Data.csv")
+nrow(Life.expectancy_raw)
+colSums(is.na(Life.expectancy_raw))
+```
+
+```{r echo=FALSE}
+options(scipen = 999)
+LE_long =  pivot_longer(Life.expectancy_raw,cols = Life.expectancy:Schooling, names_to = "var", values_to = "num") %>%
+  mutate(num = ifelse(is.na(num), -1, num)) # Set missing value to be equal to -1
+
+dataHistogram = pivot_wider(LE_long, names_from = var, values_from = num)
+dataHistogram_long <- pivot_longer(dataHistogram, 
+                                   cols = c(Life.expectancy:Schooling),
+                                   names_to = "variable", 
+                                   values_to = "value")
+```
+### Introduction
+
+Life expectancy can be defined as a statistical measure that defines the number of years a person, group, or population is expected to live, it is based on an estimate of the average age that members of a particular population group will be when they die (Ortiz-Ospina, 2017). This measure of life expectancy helps in understanding the health and longevity of populations and can vary greatly between countries and regions. Life expectancy could be influenced by factors such as healthcare access, economic conditions, lifestyle choices, and environmental factors.  
+Globally, life expectancy has increased over the past century due to improvements in public health, medical advancements, and better living conditions. However, disparities exist between different regions and demographic groups. For instance, developed countries tend to have higher life expectancies compared to developing countries, this is speculated to be partly due to better healthcare systems, higher standards of living, and lower rates of infectious diseases. The importance of this study lies in its potential to investigate critical health and socio-economic factors that significantly contribute to the longevity of populations. The study of life expectancy is significant for planning in various sectors such as healthcare, pension systems, and social services. It helps governments and organizations to allocate resources effectively and make informed decisions about public health policies to improve overall people life longivity. Additionally, understanding life expectancy trends also offer insights into the overall well-being and quality of life of populations in a particular region. This report aims to examine the multilayered factors influencing life expectancy across various countries at different periods by exploring the extent to which life expectancy is affected by factors such as year, GDP, population, and other health, social, and economic factors.  
+
+### Dataset
+The dataset for this project was sourced from Kaggle and originates from the Global Health Observatory (GHO) data repository under the World Health Organization (WHO) and the economic data for the respective countries was obtained from the United Nations website (Rajarshi, 2017).The data is structured in a CSV format, where each row represents a specific country in a particular year, accompanied by various metrics. The columns represent different variables, encompassing economic, social, and health factors across 193 countries spanning five continents. This dataset is concise and provide sufficient information for predicting and modelling life expectancy as the response variable using other feasible variables as predictors. This is the sole dataset employed in this project.  
+
+The dataset with a size of 121KB  encompass data from 2000 to 2015 of 193 countries. It contains 22 distinct attributes across 2938 rows with a total of 2563 null values. This project employ 1585 meaningful rows employed in this project based on reasonable evaluation. It includes both quantitative and qualitative data attributes. We remove or fill in null values also based on reasonable and logical estimation. The dataset was loaded into R using the read.csv function, and all wrangling, modelling, and validating were performed in R environment.  
+
+### Data Wrangling  
+Data cleaning and wrangling are essential steps in the data analysis process. A clean and well-organized dataset can improve the quality of  analysis and the reliability of the results.  
+
+Dealing with missing value is the initial step in data wrangling. The following table(Figure 1) summarize the missing values across various columns.  
+
+
+To handling the missing values, we first use histogram function to plot the distribution of each independent predictor variable to understand the overall distribution of data. This histogram plot is used to display the features of each independent predictor variable. We have set all missing values to the value -1 to indicate where the missing values are in each histogram.  
+```{r echo=FALSE}
+ggplot(data = dataHistogram_long) +
+  geom_histogram(aes(x = value), fill = "blue", color = "black", bins = 30) +
+  labs(title = "Histograms of Predictor Variables", x = "Value", y = "Frequency") +
+  facet_wrap(~ variable, scales = "free")
+ggplot(data = dataHistogram) + geom_point(aes(x = Life.expectancy, y = GDP), color = "blue") +labs(title = "Scatter Plot: Predictor Variable:GDP", x = "Life Expectancy", y = "GDP") #Variable= GDP, Scatter Plot
+```
+
+For clearer and more intuitive visualization of missing values within each histogram, we plot each predictor variable individually, using GDP as an example. From the scatter plot of the predictor variable GDP, we can find that there are some data points  have negative value. Therefore, we can conclude that the variable GDP contains some missing values.  
+
+Next step is to remove missing values. Pivot longer function in R is applied to sort a country with missing values. This function restructures the dataset by increasing the number of rows and reducing the number of columns. This function will create a new dataset containing the name of country, year, Status, there only one independent variable and its respective value. The new dataset will be grouped by the country, and we use this new dataset to determine the number of missing value in each country. We set a threshold for an acceptable level of missing values, setting is at a 25% cutoff. This cutoff level of missing value is calculated by the number of variable with missing value divided by the total number of variables. Countries exceeding this cutoff level in terms of missing values will be excluded from our analysis. For those countries whose missing value below this cutoff level, we will further check whether the missing value is meaningful. If a column have continuous missing value or a country lack complete data for any column, we define the data of this county is not reliable and will cause effect to this analysis. Based on this process, we further removed 3 countries:  Kiribati, Solomon Islands and Vanuatu. Because these counties have considerable continuous number of missing value in Measles variable. For other missing values, we fill out with the mean value of the specific variable of that country.  
+Meanwhile, we remove duplicated columns, the data of infant.deaths and under. Five. death is identical and we keep infant.death. And the data is also mostly identical and repeated for variable thinness..1.19.years and thinness..5.19.years, we keep thinness..1.19.year variable in the consideration of the wider coverage.  
+
+After dealing with missing value, we analyze the data type to fits our analysis. For the analysis of geographic factors, we added new a column by grouping the 193 countries into 5 continents. This help this analysis focus on the boarder picture of the life expectancy across regions instead specific country. For the Year variable, we have two starting models, one model year as numerical and one model year as category, therefore we have two models for this analysis. For the dummy variable of year, we divided year from 2000 to 2015 into three time period, 2000 to 2005 (indexed as y1), 2016 to 2010 (indexed as y2), 2011 to 2015 (indexed as y3). This categorization helps to analyze life expectancy over each five-year period. Similarly, for the Alcohol variable, we categorized the average alcohol assumption into low, medium and high, using thresholds of five and ten. This new column provide information to investigate the impact of  average drinking levels on life longevity rather than the effect of average drinking amount.  
+In summary, we added three dummy variables to support this life expectancy analysis: Continent, year_category and Alcohol_index. Overall, this cleaning and wrangling process involved dealing with missing value, duplicated column and adding new dummy variables to enhance the further analysis.
+
+## Methodology:Variable Explanations  
+After data wrangling, there are 19 predictors in the model, 2 qualitative predictors and 17 quantitative predictors. In this analysis, the response variable is the life expectancy and it is a quantitative and continuous variable. Life expectancy represents the average number of years a person can be expected to live, is inherently continuous because it can theoretically take any value within a range, including decimal values. This response variable, life longevity, is not a proportion, percentage, category, or binary outcome, because these variables require advanced modelling techniques which is inconsistent with content of this course.  
+
+For predictors join in this analysis, there are economic predictors including GDP, percentage expenditure, Income Composition of Resources, social predictors including Schooling, continent and population, and health predictors including adult mortality, infant deaths, alcohol, alcohol_index, Hepatitis B, Measles, BMI, Polio, Total Expenditure, Diphtheria, HIV/AIDS, Thinness 1-19 Years. All these mentioned above are quantitative predictors, while continent, year and alcohol_index are qualitative predictors. We believe that social, health, and economic factors all have a significant impact on a person's expected lifespan. When analyzed alongside these predictors, life expectancy lends itself well to the multiple linear regression statistical method. This method help people to comprehend how each factor, both alone and in combination, influences on life longevity.  
+
+## Methodology:Modelling Plan   
+
+To improve the performance of our final model, we will make adjustments to the model based on the results of the assumption check.  
+
+In this analysis, multiple linear regression is the the predominant method, complemented by various model selection and validation techniques. We will assess key metrics including F-statistic, P-value, Adjusted R-squared, and RMSE to identify the optimal model among the different alternatives. We will firstly determine the main effect model, then we will examine if the model has any possible interaction terms and polynomial terms. There are three ways of model selection for the main terms are applied in this project.  
+The initial method for model selection involves conducting individual coefficient t-tests, using automated model selection: stepwise method with a p value threshold set between 0.05 to 0.1, and selecting two models following Bayesian Information Criterion (BIC) method. Alpha value used for all statistical hypothesis tests is 0.05. Variables with p-values greater than 0.05 will be excluded from the model as they are not statistically significant. One final main effect model will be used to investigate if the model has any possible interaction terms and polynomial terms.  
+
+Further explain the workflow, we will first assess and address multicollinearity to understand the correlation among variables in their original forms. We use Variance Inflation Factor (VIF) method and remove variable with high multicollinearity. By employing the Variance Inflation Factor (VIF) methodology, we aim to identify and exclude variables with high multicollinearity. The next procedure is to perform variable transformation to improve the linearity and normalize the residual’s distribution,  utilizing  transformation techniques such as, log transformation,square root transformation, inverse transformation and etc.  
+
+Typically, variable transformation and multicollinearity test are post-modeling considerations. However, given the model's complexity including a large number of predictors and several dummy variables, we address multicollinearity and variable transformation upfront. This early action reduce the effect of outliners to the model and reduce skewness.This approach simplifies the relationships, facilitating subsequent model selection and validation, ultimately contributing to improve model performance and alignment. There are two preliminary models at the starting point, one treating 'YEAR' as a quantitative variable and the other as a categorical variable for the interval. This outlined procedure is applied to both models before modelling.  
+Upon evaluating all variables, We proceed with model selection including those transformed variables. Our strategy involves selecting the optimal model from each of the following: individual testing (T), stepwise selection, and two from the Bayesian Information Criterion (BIC) selection. We will choose one superior model from these for further interaction and higher-order term model exploration.  
+
+Ultimately, we will have one leading model derived from the initial approaches. We will then apply cross-validation and a series of assumption tests to determine the final most precise final model for forecasting life expectancy.
+This final model will be validated through 6 assumptions below:  
+
+1. Linearity Assumption - Review residual plots  
+2. Independence Assumption - Review residual against life expectancy (age)  
+3. Normality Assumption - Using Shapiro-Wilk normality test  
+4. Equal Variance Assumption (heteroscedasticity) - Using Breusch-Pagan test  
+5. Multicollinearity - Using variance inflation factors (VIF)  
+6. Outliers - check Cook’s distance and leverage  
+
+
+
+## Methodology: Workload distribution  
+The workload distribution for the team is well-organized, with tasks and report writing shared fairly among the members. Michael focuses on data cleaning and wrangling, variable transformation, and multicollinearity testing. Olivia handles modeling and cross-validation. Towmee checks the linearity assumptions and equal variance assumption. Rookayat is responsible for the independence assumptions, normality assumption, and outlier analysis. Towmee and Rookayat work together on interpreting coefficients.  
+For the written report, Rookayat is tasked with the project introduction and datasets. Olivia is responsible for data cleaning and wrangling, as well as methodology. Michael handles the model results section. Towmee and Rookayat collaborate on the assumptions analysis, with Towmee also managing the conclusion and discussion sections. Michael and Olivia will finalize formatting and visualization to ensure the data is presented clearly, and the RMD file is structured properly with comments. This collaborative method ensures that all team members contribute significantly to the project.  
+For the oral presentation, Towmee is responsible for introduction and dataset explanation, Michael covers the data wrangling and methodology and prediction summary. Olivia focus on result showcase and Rookayat takes assumption analysis and conclusion.  
+
+
+```{r include=FALSE}
+Missing.Data.Cutoff = 0.25 #We set a cutoff value=25%, we will drop any country if the missing value is greater than this value.
+LE_long1 =  pivot_longer(Life.expectancy_raw,cols = Life.expectancy:Schooling, names_to = "var", values_to = "num")
+
+LE_long_missing = LE_long1 %>% #Process the removing part
+  group_by(Country, var) %>%
+  summarise(Percent.Missing = sum(is.na(num))/n()) %>%
+  mutate(Var.Missing = ifelse(Percent.Missing > Missing.Data.Cutoff, 1, 0)) %>%
+  group_by(Country) %>%
+  summarise(missing = max(Var.Missing))
+
+Life.expectancy = left_join(LE_long1, LE_long_missing) %>% 
+  filter(missing == 0 ) %>%
+  pivot_wider(names_from = var, values_from = num)
+
+colSums(is.na(Life.expectancy)) #There are some missing values in the data frame, because the missing values for the country is less than 25%. 
+
+```
+```{r include=FALSE}
+#Our method to fill those missing values by adding the mean value to replace the missing value
+Life.expectancy=Life.expectancy %>%
+  group_by(Country) %>%
+  mutate(Alcohol = ifelse(is.na(Alcohol), mean(Alcohol, na.rm = TRUE), Alcohol))
+Life.expectancy=Life.expectancy %>%
+  group_by(Country) %>%
+  mutate(Hepatitis.B = ifelse(is.na(Hepatitis.B), mean(Hepatitis.B, na.rm = TRUE), Hepatitis.B))
+Life.expectancy=Life.expectancy %>%
+  group_by(Country) %>%
+  mutate(Total.expenditure  = ifelse(is.na(Total.expenditure ), mean(Total.expenditure , na.rm = TRUE), Total.expenditure ))
+Life.expectancy=Life.expectancy %>%
+  group_by(Country) %>%
+  mutate(GDP  = ifelse(is.na(GDP), mean(GDP, na.rm = TRUE), GDP))
+Life.expectancy=Life.expectancy %>%
+  group_by(Country) %>%
+  mutate(Population= ifelse(is.na(Population), mean(Population, na.rm = TRUE), Population))
+
+colSums(is.na(Life.expectancy))
+```
+
+```{r include=FALSE}
+#Dropping the dublicate columns
+Life.expectancy <- subset(Life.expectancy, select = -thinness.5.9.years)
+Life.expectancy <- subset(Life.expectancy, select = -under.five.deaths)
+Life.expectancy <- subset(Life.expectancy, select = -missing)
+Life.expectancy <- subset(Life.expectancy, select = -Status)
+
+
+#Creating a new col,Alcohol_index
+Life.expectancy <- Life.expectancy %>%
+  mutate(Alcohol_index = cut(Alcohol, breaks = c(-Inf, 5, 10, Inf), labels = c("Low", "Medium", "High"), include.lowest = TRUE))
+```
+```{r include=FALSE}
+#Deleting meaningless countries. 
+Life.expectancy <- Life.expectancy%>%
+  filter(Country != "Kiribati")
+
+Life.expectancy <- Life.expectancy%>%
+  filter(Country != "Solomon Islands")
+
+Life.expectancy <- Life.expectancy%>%
+  filter(Country != "Vanuatu")
+
+# Find the country with the most zero values
+country_with_most_zeros <- Life.expectancy$Country[which.max(apply(Life.expectancy == 0, 1, sum))]
+print(country_with_most_zeros)
+```
+
+```{r include=FALSE}
+unique_years=unique(Life.expectancy$Year)
+year_ranges=cut(unique_years,
+                   breaks = c(1999, 2005, 2010, 2015),
+                   labels = c("Y1", "Y2", "Y3"),
+                   include.lowest = TRUE)
+
+Life.expectancy$year_category <- cut(Life.expectancy$Year,
+                                     breaks = c(1999, 2005, 2010, 2015),
+                                     labels = c("Y1", "Y2", "Y3"),
+                                     include.lowest = TRUE)
+
+library(countrycode)
+Life.expectancy <- Life.expectancy %>%
+  mutate(Continent = countrycode(Country, "country.name", "continent"))
+head(Life.expectancy_raw)
+```
+
+
+## Pre-modelling Procedures  
+Multicollinearity test is the first test we perform to remove variables with high Multicollinearity using VIF given the large number of variables. We dropped variables with VIF values greater than three each time. Specifically, the VIF for alcohol was 10.3935, for percentage expenditure it was 9.0668, and for schooling it was 3.6181. In total, we dropped independent variables: alcohol, percentage.expenditure and schooling. Because it suggests that there is a correlation among these predictors. Therefore we exclude these variables in this model.  
+```{r echo=FALSE}
+library(mctest)
+fullmodel_factor2=lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+Alcohol+ percentage.expenditure+Hepatitis.B+Measles+BMI+Polio+log(Total.expenditure)+Diphtheria+log(HIV.AIDS)+GDP+log(Population)+thinness..1.19.years+Income.composition.of.resources+Schooling+factor(Alcohol_index), data=Life.expectancy)
+imcdiag(fullmodel_factor2, method = "VIF")
+
+fullmodel_factor2=lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+ percentage.expenditure+Hepatitis.B+Measles+BMI+Polio+log(Total.expenditure)+Diphtheria+log(HIV.AIDS)+GDP+log(Population)+thinness..1.19.years+Income.composition.of.resources+Schooling+factor(Alcohol_index), data=Life.expectancy)
+imcdiag(fullmodel_factor2, method = "VIF")#We will drop percentage.expenditure 
+
+fullmodel_factor3=lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+Hepatitis.B+Measles+BMI+Polio+log(Total.expenditure)+Diphtheria+log(HIV.AIDS)+GDP+log(Population)+thinness..1.19.years+Income.composition.of.resources+factor(Alcohol_index)+Schooling, data=Life.expectancy)
+imcdiag(fullmodel_factor3, method = "VIF")#We will drop schooling
+
+fullmodel_factor4 =lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+Hepatitis.B+Measles+BMI+Polio+log(Total.expenditure)+Diphtheria+log(HIV.AIDS)+GDP+log(Population)+thinness..1.19.years+Income.composition.of.resources+factor(Alcohol_index), data=Life.expectancy)
+imcdiag(fullmodel_factor4, method = "VIF")
+```
+
+After the Multicollinearity test, variable transformation is conducted before modeling. We used pairs function to generate scatter plots between each independent predictor and the dependent variable life expectancy. We test each variable with apparent curve adding either log, exponential or square to check any considerable improvement to the R square value.   
+
+From the pairs plots, we found three independent variables are suitable for transformation; we use the logarithm to reinforce the relation between independent variables and dependent variables. For the term  HIV.AIDS, it contains many values close to zero, it may cause our prediction to be inaccurate. By applying the logarithm to the terms, we can remove zero values and enhance our model’s  accuracy. We in total have three transformed variables: log(HIV.AIDS),  log(Population) and log(Total.expenditure).  
+
+```{r echo=FALSE}
+library(GGally)
+pairs(~Life.expectancy+HIV.AIDS, data=Life.expectancy, panel=panel.smooth)
+pairs(~Life.expectancy+Adult.Mortality, data=Life.expectancy, panel=panel.smooth)
+pairs(~Life.expectancy+Total.expenditure, data=Life.expectancy, panel=panel.smooth)
+```
+
+
+
+
+
+
+
+
+### Result  
+## Preditor Variable: factor(Year)
+To choose the optimal parameters from the full model, we will use individual coefficient t test to achieve it. We have set a hypothesis test to examine each predictor variable to test which variables are significant and insignificant.  
+Our hypothesis test is at the significance level $\alpha = 0.05$.   
+$$
+\begin{aligned}
+H_0: \beta_{factor(Continent)}=\beta_{factor(year_category)}=...=\beta_{factor(Alcohol_index)}=0 \\
+H_a: \text{at least one } \beta_i \neq 0 \text{ (i=factor(Continent),factor(year_category), ...,factor(Alcohol_index))}
+\end{aligned}
+$$
+Full model:  
+$$
+\begin{aligned}
+\widehat{\text{Life.expectancy}} &= \beta_1 \cdot \text{factor(year\_category)} \\
+&+ \beta_2 \cdot \text{factor(Continent)} + \beta_3 \cdot \text{Adult.Mortality} \\
+&+ \beta_4 \cdot \text{infant.deaths} + \beta_5 \cdot \text{Hepatitis.B} + \beta_6 \cdot \text{Measles} \\
+&+ \beta_7 \cdot \text{BMI} + \beta_8 \cdot \text{Polio} + \beta_9 \cdot \log(\text{Total.expenditure}) \\
+&+ \beta_{10} \cdot \text{Diphtheria} + \beta_{11} \cdot \log(\text{HIV.AIDS}) + \beta_{12} \cdot \text{GDP} \\
+&+ \beta_{13} \cdot \log(\text{Population}) + \beta_{14} \cdot \text{thinness..1.19.years} \\
+&+ \beta_{15} \cdot \text{Income.composition.of.resources} \\
+&+ \beta_{16} \cdot \text{factor(Alcohol\_index)}
+\end{aligned}
+$$
+From the summary of the linear regression model, 'Full_Model_factor' found in the appendix, we found that some independent variables, specifically Hepatitis B, Measles, log(Total.expenditure), and thinness 1-19 years, are insignificant as their p-values are greater than 0.05. Consequently, we can conclude that these variables fail to reject the null hypothesis. Therefore, we will remove them from the model. Subsequently, we will perform the same individual coefficient t-test to evaluate the remaining independent variables. Ultimately, we will obtain a reduced model comprising only significant predictor variables, labeled 'Reduced_Model_factor' in the appendix.  
+The hypothesis test is at the significance level $\alpha = 0.05$.  
+$$
+\begin{aligned}
+H_0: \beta_{factor(Continent)}=\beta_{factor(year_category)}=...=\beta_{factor(Alcohol_index)}=0 \\
+H_a: \text{at least one } \beta_i \neq 0 \text{ (i=factor(Continent),factor(year_category), ...,factor(Alcohol_index))}
+\end{aligned}
+$$
+ 
+Reduced model:  
+$$
+\begin{aligned}
+\widehat{\text{Life.expectancy}} &= 59.840570956 + 0.401155601 \cdot \text{factor(year\_category)Y2} \\
+&+ 0.758527089 \cdot \text{factor(year\_category)Y3} 
++ 3.470674964 \cdot \text{factor(Continent)Americas} \\
+&+ 0.345436298 \cdot \text{factor(Continent)Asia} + 2.905785878 \cdot \text{factor(Continent)Europe} \\
+&+ 0.331421999 \cdot \text{factor(Continent)Oceania} - 0.014648533 \cdot \text{Adult.Mortality} \\
+&- 0.001901909 \cdot \text{infant.deaths} + 0.000016724 \cdot \text{Measles} + 0.017207167 \cdot \text{BMI} \\
+&+ 0.010447523 \cdot \text{Polio} - 0.032236362 \cdot \log(\text{Total.expenditure}) \\
+&+ 0.012134797 \cdot \text{Diphtheria} - 2.270323472 \cdot \log(\text{HIV.AIDS}) + 0.000089310 \cdot \text{GDP} \\
+&- 0.155527892 \cdot \log(\text{Population}) - 0.031619413 \cdot \text{thinness..1.19.years} \\
+&+ 11.394803782 \cdot \text{Income.composition.of.resources} \\
+&- 0.230747709 \cdot \text{factor(Alcohol\_index)Medium} \\
+&- 0.819048866 \cdot \text{factor(Alcohol\_index)High}
+\end{aligned}
+$$
+The Adjust R-squared and RMSE for the reduced model are:
+$$
+\begin{aligned}
+R^2=0.8506 \\
+RMSE=3.297
+\end{aligned}
+$$
+The adjusted R-squared value of 85.06% in the reduced model indicates that 85.06% of the variation in the response variable is explained by the model. The RMSE (Root Mean Square Error) of 3.297 in this model signifies that the average difference between the predicted values of the statistical model and the actual values is 3.297.  
+Regarding our second model selection method, we utilize the stepwise regression procedure. We have set the p-value threshold for adding predictors to the model at 0.05, and for removing predictors from the model at 0.1.  
+
+  
+The optimal model selected by automated model selection is: 
+$$
+\begin{aligned}
+\widehat{\text{Life.expectancy}} &= 59.646242012 -2.277770598 \cdot \log(\text{HIV.AIDS}) \\
+&+ 3.500101564 \cdot \text{factor(Continent)Americas} \\
+&+ 0.362783057 \cdot \text{factor(Continent)Asia} + 2.601022968 \cdot \text{factor(Continent)Europe} \\
+&+ 0.407391106 \cdot \text{factor(Continent)Oceania} \\
+&+ 11.260036640 \cdot \text{Income.composition.of.resources} \\
+&- 0.014866317 \cdot \text{Adult.Mortality} + 0.000084412 \cdot \text{GDP} \\
+&- 0.156578595 \cdot \log(\text{Population}) + 0.011382643 \cdot \text{Diphtheria} \\
+&+ 0.018800887 \cdot \text{BMI} - 0.001636183 \cdot \text{infant.deaths} \\
+&+ 0.009925676 \cdot \text{Polio} + 0.378189607 \cdot \text{factor(year\_category)Y2} \\
+&- 0.001636183 \cdot \text{factor(year\_category)Y3}
+\end{aligned}
+$$
+
+The Adjust R-squared and RMSE for the stepwise model are:
+$$
+\begin{aligned}
+R^2=0.8502 \\
+RMSE=3.301
+\end{aligned}
+$$
+The adjusted R-squared value of 85.02% in the reduced model indicates that 85.02% of the variation in the response variable is explained by the model. In this model, the RMSE (Root Mean Square Error) is 3.301, which means that the average difference between the statistical model's predicted values and the actual values is 3.301.    
+
+The third model selection method we use is BIC selection procedure. From the 12 subset of models, we carefully look at metrics of cp, RMSE, Adj R2 and BIC.  
+```{r include=FALSE}
+library(leaps)
+fullmodel_project=regsubsets(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+Hepatitis.B+Measles+BMI+Polio+log(Total.expenditure)+Diphtheria+log(HIV.AIDS)+GDP+log(Population)+thinness..1.19.years+Income.composition.of.resources+factor(Alcohol_index), data=Life.expectancy, nvmax=12)
+summary(fullmodel_project)
+```
+```{r echo=FALSE}
+reg.summary=summary(fullmodel_project)
+cp=c(reg.summary$cp)
+AdjustedR=c(reg.summary$adjr2)
+RMSE=c(reg.summary$rss)
+BIC=c(reg.summary$bic)
+cbind(cp,AdjustedR,RMSE,BIC)
+
+par(mfrow=c(2,2))
+plot(reg.summary$cp,type = "o",pch=10, xlab="Number of Variables",ylab= "Cp")
+plot(reg.summary$rss,type = "o",pch=10, xlab="Number of Variables",ylab= "RMSE")
+plot(reg.summary$rsq,type = "o",pch=10, xlab="Number of Variables",ylab= "Adjusted Rˆ2")
+plot(reg.summary$bic,type = "o",pch=10, xlab="Number of Variables",ylab= "BIC")
+```
+
+We select the best 2 models from BIC selection, No.10 and No.12 since they have higher adjust R-squared and lower BIC and RMSE.  
+The BIC Model 1:  
+$$
+\begin{aligned}
+\widehat{\text{Life.expectancy}} &= 60.010656483 -2.293318339 \cdot \log(\text{HIV.AIDS}) \\
+&+ 3.451017495 \cdot \text{factor(Continent)Americas} + 0.182694259 \cdot \text{factor(Continent)Asia} \\
+&+ 2.558680214 \cdot \text{factor(Continent)Europe} + 0.276836591 \cdot \text{factor(Continent)Oceania} \\
+&+ 11.312577134 \cdot \text{Income.composition.of.resources} - 0.014739341 \cdot \text{Adult.Mortality} \\
+&+ 0.000085090 \cdot \text{GDP} -0.179252642 \cdot \log(\text{Population}) \\
+&+ 0.018715379 \cdot \text{Diphtheria} + 0.021344827 \cdot \text{BMI} \\
+&+ 0.394298921 \cdot \text{factor(year\_category)Y2} + 0.769131187 \cdot \text{factor(year\_category)Y3}
+\end{aligned}
+$$
+The Adjust R-squared and RMSE for the BIC model 1 are:  
+$$
+\begin{aligned}
+R^2=0.8493 \\
+RMSE=3.311
+\end{aligned}
+$$
+
+The BIC Model 2:  
+$$
+\begin{aligned}
+\widehat{\text{Life.expectancy}} &= 59.646242012 + 3.500101564 \cdot \text{factor(Continent)Americas} \\
+&+ 0.362783057 \cdot \text{factor(Continent)Asia} + 2.601022968 \cdot \text{factor(Continent)Europe} \\
+&+ 0.407391106 \cdot \text{factor(Continent)Oceania} \\
+&+ 11.260036640 \cdot \text{Income.composition.of.resources} \\
+&- 0.014866317 \cdot \text{Adult.Mortality} - 0.001636183 \cdot \text{infant.deaths} \\
+&+ 0.000084412 \cdot \text{GDP} - 0.156578595 \cdot \log(\text{Population}) \\
+&+ 0.011382643 \cdot \text{Diphtheria} + 0.018800887 \cdot \text{BMI} \\
+&+ 0.009925676 \cdot \text{Polio} - 2.277770598 \cdot \log(\text{HIV.AIDS}) \\
+&+ 0.378189607 \cdot \text{factor(year\_category)Y2} + 0.758257299 \cdot \text{factor(year\_category)Y3}
+\end{aligned}
+$$
+The Adjust R-squared and RMSE for the BIC model 1 are:  
+$$
+\begin{aligned}
+R^2=0.8502 \\
+RMSE=3.301
+\end{aligned}
+$$
+Now, we will select the best main effect model from these four chosen models. Considering the adjusted R-squared and RMSE, we have ultimately decided to use the parameters from the BIC 2 model as the best main effect model.    
+
+## Interaction model and polynomial model  
+
+To enhance the accuracy of our model estimation, we are considering the addition of interaction terms and polynomial terms. We will employ individual coefficient t-tests to determine which interaction terms should be added to the final model.    
+The hypothesis test for the interaction terms at the significance level $\alpha =0.05$ is  
+$$
+\begin{aligned}
+H_0: \beta_\text{{factor(Continent):factor(year_category)}}=\beta_{factor(year_category):BMI}=...=0 \\
+H_a: \text{at least one } \beta_i \neq 0 \text{ (i=factor(Continent):factor(year_category), factor(year_category), ..., Polio:GDP )}
+\end{aligned}
+$$
+
+Some of the interaction terms have p-value >0.05, so they fail to reject the null hypothesis. It indicates that those interaction terms are not statistically significant. Therefore, we will remove those insignificant interaction terms and do an individual coefficient t test again.  
+The best interaction model:  
+$$
+\begin{aligned}
+\widehat{\text{LifeExpectancy}} = & 54.172654663 + 0.384551596 \cdot \text{YearCategoryY2} + 0.655634409 \cdot \text{YearCategoryY3} \\
+& + 4.429131500 \cdot \text{ContinentAmericas} + 11.865931125 \cdot \text{ContinentAsia} \\
+&+ 10.650500674 \cdot \text{ContinentEurope} + (-6.711418150) \cdot \text{ContinentOceania} \\
+& - 0.006374904 \cdot \text{AdultMortality} - 0.028714386 \cdot \text{InfantDeaths} + 0.119803429 \cdot \text{BMI} \\
+&+ 0.009594755 \cdot \text{Polio} + 0.045177856 \cdot \text{Diphtheria} \\
+& - 3.087151595 \cdot \log(\text{HIV.AIDS}) - 0.000084272 \cdot \text{GDP} - 0.174111510 \cdot \log(\text{Population}) \\
+&+ 12.432009306 \cdot \text{IncomeComposition} \\
+& - 0.006087147 \cdot \text{ContinentAmericas} \cdot \text{AdultMortality} \\
+&- 0.027696254 \cdot \text{ContinentAsia} \cdot \text{AdultMortality} \\
+& - 0.020487884 \cdot \text{ContinentEurope} \cdot \text{AdultMortality} \\ 
+&+ 0.006041021 \cdot \text{ContinentOceania} \cdot \text{AdultMortality} \\
+& - 0.023857765 \cdot \text{ContinentAmericas} \cdot \text{InfantDeaths} \\ 
+&- 0.011884905 \cdot \text{ContinentAsia} \cdot \text{InfantDeaths} \\
+& - 0.240222164 \cdot \text{ContinentEurope} \cdot \text{InfantDeaths} \\&- 0.315312008 \cdot \text{ContinentOceania} \cdot \text{InfantDeaths} \\
+& - 0.011362059 \cdot \text{ContinentAmericas} \cdot \text{BMI} + 0.000175258 \cdot \text{ContinentAsia} \cdot \text{BMI} \\
+& - 0.018873496 \cdot \text{ContinentEurope} \cdot \text{BMI} - 0.044463321 \cdot \text{ContinentOceania} \cdot \text{BMI} \\
+& + 2.073805419 \cdot \text{ContinentAmericas} \cdot \log(\text{HIV.AIDS}) \\&+ 2.807412814 \cdot \text{ContinentAsia} \cdot \log(\text{HIV.AIDS}) \\
+& + 1.581142251 \cdot \text{ContinentEurope} \cdot \log(\text{HIV.AIDS}) \\&+ 3.847792131 \cdot \text{ContinentOceania} \cdot \log(\text{HIV.AIDS}) \\
+& + 3.869187604 \cdot \text{ContinentAmericas} \cdot \text{IncomeComposition} \\&- 4.572309564 \cdot \text{ContinentAsia} \cdot \text{IncomeComposition} \\
+& - 2.706976006 \cdot \text{ContinentEurope} \cdot \text{IncomeComposition} \\&+ 21.614835116 \cdot \text{ContinentOceania} \cdot \text{IncomeComposition} \\
+& + 0.000038829 \cdot \text{AdultMortality} \cdot \text{InfantDeaths} \\& + 0.061122449 \cdot \text{InfantDeaths} \cdot \text{IncomeComposition} \\
+& - 0.001027333 \cdot \text{BMI} \cdot \text{Diphtheria} + 0.000011205 \cdot \text{GDP} \cdot \log(\text{Population})
+\end{aligned}
+$$
+From the interaction model, we observe a higher adjusted R-squared and a lower RMSE compared to the best main effect model. The adjusted R-squared and RMSE for the interaction model are as follows:    
+$$
+\begin{aligned}
+R^2=0.8818  \\
+RMSE=2.933
+\end{aligned}
+$$
+Now, we will examine if there are some significant polynomial terms. We use ggpairs function to examine which variables worthing further testing.  
+```{r echo=FALSE}
+library(GGally)
+pairs(~Life.expectancy+Adult.Mortality+infant.deaths+ BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources, data=Life.expectancy, panel=panel.smooth)
+```
+From the plot, we will test if the predictor variable Adult.Mortality has polynomial terms. We will use the individual coefficient t test to test the polynomial term. 
+The hypothesis test for the polynomial term at the significance level $\alpha =0.05$ is  
+$$
+\begin{aligned}
+H_0: \beta_\text{Adult.Mortality^2}=0 \\
+H_a: \beta_\text{Adult.Mortality^2} \ne 0
+\end{aligned}
+$$
+From the summary of higher order model in the appendix, we can get that the p-value for the polynomial term I(Adult.Mortality^2) is less than 0.05, so we can reject the null hypothesis. Therefore, we can say that the high order model is statistically significant.  
+The high order model:  
+$$
+\begin{aligned}
+\widehat{\text{LifeExpectancy}} = & 51.632308285 -0.000042701 \cdot \text{I(Adult.Mortality^2) } \\
+&+ 0.206579282 \cdot \text{YearCategoryY2} + 0.424396731 \cdot \text{YearCategoryY3} \\
+& + 7.423021305 \cdot \text{ContinentAmericas} + 14.199967156 \cdot \text{ContinentAsia} \\
+& + 13.842592676 \cdot \text{ContinentEurope} + (-4.289876119) \cdot \text{ContinentOceania} \\
+& - 0.006374904 \cdot \text{AdultMortality} - 0.028714386 \cdot \text{InfantDeaths} \\
+&+ 0.142521739 \cdot \text{BMI} + 0.009594755 \cdot \text{Polio} \\
+&+ 0.041572244 \cdot \text{Diphtheria} - 3.087151595 \cdot \log(\text{HIV.AIDS}) \\
+&- 0.000078914 \cdot \text{GDP} - 0.166980958 \cdot \log(\text{Population}) \\
+& + 13.030903187 \cdot \text{IncomeComposition} \\
+& - 0.020687213 \cdot \text{ContinentAmericas} \cdot \text{AdultMortality} \\
+& - 0.039172175 \cdot \text{ContinentAsia} \cdot \text{AdultMortality} \\
+& - 0.033759402 \cdot \text{ContinentEurope} \cdot \text{AdultMortality} \\
+& + 0.006041021 \cdot \text{ContinentOceania} \cdot \text{AdultMortality} \\
+& - 0.023857765 \cdot \text{ContinentAmericas} \cdot \text{InfantDeaths} \\
+& - 0.011884905 \cdot \text{ContinentAsia} \cdot \text{InfantDeaths} \\
+& - 0.240222164 \cdot \text{ContinentEurope} \cdot \text{InfantDeaths} \\
+& - 0.315312008 \cdot \text{ContinentOceania} \cdot \text{InfantDeaths} \\
+& - 0.011362059 \cdot \text{ContinentAmericas} \cdot \text{BMI} + 0.000175258 \cdot \text{ContinentAsia} \cdot \text{BMI} \\
+& - 0.018873496 \cdot \text{ContinentEurope} \cdot \text{BMI} - 0.044463321 \cdot \text{ContinentOceania} \cdot \text{BMI} \\
+& + 2.073805419 \cdot \text{ContinentAmericas} \cdot \log(\text{HIV.AIDS}) \\
+& + 2.313358308 \cdot \text{ContinentAsia} \cdot \log(\text{HIV.AIDS}) \\
+& + 1.434080555 \cdot \text{ContinentEurope} \cdot \log(\text{HIV.AIDS}) \\
+& + 3.362083095 \cdot \text{ContinentOceania} \cdot \log(\text{HIV.AIDS}) \\
+& + 2.758815464 \cdot \text{ContinentAmericas} \cdot \text{IncomeComposition} \\
+& - 5.405282003 \cdot \text{ContinentAsia} \cdot \text{IncomeComposition} \\
+& - 3.367770792 \cdot \text{ContinentEurope} \cdot \text{IncomeComposition} \\
+& + 20.656446443 \cdot \text{ContinentOceania} \cdot \text{IncomeComposition} \\
+& + 0.000034444 \cdot \text{AdultMortality} \cdot \text{InfantDeaths} \\
+& + 0.054328270 \cdot \text{InfantDeaths} \cdot \text{IncomeComposition} \\
+& - 0.000919519 \cdot \text{BMI} \cdot \text{Diphtheria} + 0.000010826 \cdot \text{GDP} \cdot \log(\text{Population})
+\end{aligned}
+$$
+The Adjust R-squared and RMSE for the high order model are:  
+$$
+\begin{aligned}
+R^2=0.889  \\
+RMSE=2.841
+\end{aligned}
+$$
+Until now, we can conclude that the higher order model has the highest adjust R-squared and lowest RMSE among all main effect terms, interaction terms and polynomial terms. 
+
+
+
+## Preditor Variable: numerical(Year)
+
+We conduct the same steps for the independent variable Year. And we will determine the best model from both numerical(Year) and factor(year) models.  
+
+The best model for the numerical(Year) after selecting the parameters from the reduced model, stepwise model and BIC models is higher order model.  
+The model for the predictor variable numerical(Year) is:  
+$$
+\begin{aligned}
+\widehat{\text{LifeExpectancy}} = & -30.959840461 -0.000042934 \cdot \text{I(Adult.Mortality^2)} \\
+&+ 0.042186528 \cdot \text{Year} + 7.629740496 \cdot \text{ContinentAmericas} \\
+&+ 14.505211117 \cdot \text{ContinentAsia} + 14.248895056 \cdot \text{ContinentEurope} \\
+&- 3.506616248 \cdot \text{ContinentOceania} + 0.017144775 \cdot \text{AdultMortality} \\
+&- 0.036860341 \cdot \text{InfantDeaths} + 0.173687620 \cdot \text{BMI} \\
+&+ 0.023012543 \cdot \text{Diphtheria} - 2.580988698 \cdot \log(\text{HIV.AIDS}) \\
+&- 0.000075579 \cdot \text{GDP} - 0.164500638 \cdot \log(\text{Population}) \\
+&+ 8.201933590 \cdot \text{IncomeComposition} \\
+&- 0.020181877 \cdot \text{ContinentAmericas} \cdot \text{AdultMortality} \\
+&- 0.038408168 \cdot \text{ContinentAsia} \cdot \text{AdultMortality} \\
+&- 0.033646568 \cdot \text{ContinentEurope} \cdot \text{AdultMortality} \\
+&- 0.005742054 \cdot \text{ContinentOceania} \cdot \text{AdultMortality} \\
+&- 0.011525479 \cdot \text{ContinentAmericas} \cdot \text{InfantDeaths} \\
+&+ 0.001135230 \cdot \text{ContinentAsia} \cdot \text{InfantDeaths} \\
+&- 0.206429664 \cdot \text{ContinentEurope} \cdot \text{InfantDeaths} \\
+&- 0.269711702 \cdot \text{ContinentOceania} \cdot \text{InfantDeaths} \\
+&- 0.041250094 \cdot \text{ContinentAmericas} \cdot \text{BMI} \\
+&- 0.027781374 \cdot \text{ContinentAsia} \cdot \text{BMI} \\
+&- 0.047492004 \cdot \text{ContinentEurope} \cdot \text{BMI} \\
+&- 0.080373868 \cdot \text{ContinentOceania} \cdot \text{BMI} \\
+&+ 1.616993530 \cdot \text{ContinentAmericas} \cdot \log(\text{HIV.AIDS}) \\
+&+ 2.310050828 \cdot \text{ContinentAsia} \cdot \log(\text{HIV.AIDS}) \\
+&+ 1.486399379 \cdot \text{ContinentEurope} \cdot \log(\text{HIV.AIDS}) \\
+&+ 3.410690625 \cdot \text{ContinentOceania} \cdot \log(\text{HIV.AIDS}) \\
+&+ 2.117855321 \cdot \text{ContinentAmericas} \cdot \text{IncomeComposition} \\
+&- 6.298332512 \cdot \text{ContinentAsia} \cdot \text{IncomeComposition} \\
+&- 4.135719920 \cdot \text{ContinentEurope} \cdot \text{IncomeComposition} \\
+&+ 20.132871715 \cdot \text{ContinentOceania} \cdot \text{IncomeComposition} \\
+&+ 0.000032741 \cdot \text{AdultMortality} \cdot \text{InfantDeaths} \\
+&+ 0.053885744 \cdot \text{InfantDeaths} \cdot \text{IncomeComposition} \\
+&- 0.001302102 \cdot \text{BMI} \cdot \text{Diphtheria} \\
+&+ 0.000010475 \cdot \text{GDP} \cdot \log(\text{Population}) \\
+&+ 0.067505241 \cdot \text{Diphtheria} \cdot \text{IncomeComposition}
+\end{aligned}
+$$
+The Adjust R-squared and RMSE for the high order model are:  
+$$
+\begin{aligned}
+R^2=0.8896  \\
+RMSE=2.834 
+\end{aligned}
+$$
+
+Now, we will employ the cross-validation method to help us choose the best model between the one with the categorical variable 'Year' and the one with 'Year' as a numerical variable. For the cross-validation, we have set the number of folds, K, to 10. This means the model will be trained 10 times. At the end, we will analyze all the results and select the final model based on these comparisons.   
+```{r echo=FALSE}
+library(caret)
+# Model formula 1 factor(Year)
+formula1 =Life.expectancy~I(Adult.Mortality^2)+factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+ BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources+factor(Continent):Adult.Mortality+
+factor(Continent):infant.deaths +factor(Continent):BMI+ factor(Continent):log(HIV.AIDS)+  factor(Continent):Income.composition.of.resources +  Adult.Mortality:infant.deaths+  infant.deaths:Income.composition.of.resources+  BMI:Diphtheria+GDP:log(Population)
+
+control=trainControl(method = "cv", number = 10) # 10-fold CV
+# Train the model using caret
+model_cro1<- train(formula1, data = Life.expectancy, method = "lm", trControl = control)
+model_cro1
+
+# Model formula 2  number(Year) 
+formula2 =Life.expectancy~I(Adult.Mortality^2)+Year+factor(Continent)+Adult.Mortality+ infant.deaths+ BMI+Diphtheria+ log(HIV.AIDS)+ GDP+log(Population)+Income.composition.of.resources+ factor(Continent):Adult.Mortality+factor(Continent):infant.deaths+factor(Continent):BMI+factor(Continent):log(HIV.AIDS)+factor(Continent):Income.composition.of.resources+Adult.Mortality:infant.deaths+infant.deaths:Income.composition.of.resources+BMI:Diphtheria+GDP:log(Population)+Diphtheria:Income.composition.of.resources
+model_cro2<- train(formula2, data = Life.expectancy, method = "lm", trControl = control)
+model_cro2
+```
+From the results, it's evident that the two models are highly similar, showing close values in terms of RMSE, R-squared, and MAE. However, comprehensively considering  the model performance, the purpose of our analysis and the context of this topic. We have decided to select the predictor variable 'Year' in its qualitative (categorical) for the border picture of analysis and model interpretation.  
+
+
+### Multiple Regression Assumptions
+
+```{r include=FALSE}
+Final_model1 <- lm(Life.expectancy~I(Adult.Mortality^2)+factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+ BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources+factor(Continent):Adult.Mortality+
+factor(Continent):infant.deaths +factor(Continent):BMI+ factor(Continent):log(HIV.AIDS)+  factor(Continent):Income.composition.of.resources +  Adult.Mortality:infant.deaths+  infant.deaths:Income.composition.of.resources+  BMI:Diphtheria+GDP:log(Population),data=Life.expectancy)
+Final_model2 <- lm(Life.expectancy~I(Adult.Mortality^2)+Year+factor(Continent)+Adult.Mortality+ infant.deaths+ BMI+Diphtheria+ log(HIV.AIDS)+ GDP+log(Population)+Income.composition.of.resources+ factor(Continent):Adult.Mortality+factor(Continent):infant.deaths+factor(Continent):BMI+factor(Continent):log(HIV.AIDS)+factor(Continent):Income.composition.of.resources+Adult.Mortality:infant.deaths+infant.deaths:Income.composition.of.resources+BMI:Diphtheria+GDP:log(Population)+Diphtheria:Income.composition.of.resources,data=Life.expectancy)
+```
+
+
+The following sections will discuss the methods we employed to validate our model against the necessary assumptions required for conducting multiple regression analysis. It's crucial to assess these assumptions to establish a certain level of confidence in the outcomes of our model.This assumptions will be checked for both the model with the year variable as categorical (Model1) and the model with the year variable as categorical (Model2). The regression assumptions to be checked are:  
+
+Linearity Assumption  
+Independence Assumption  
+Normality Assumption  
+Equal Variance Assumption  
+Multicollinearity Tests  
+Influential points and outliers  
+Interpreting Coefficients  
+
+## Linearity Assumption  
+Our models operates under the premise that there is a linear relationship between the predictor variables and the response variables. To verify this, we examine residual plots for Model1 and Model2, as shown in Figures a1 and a2, to identify any non-linear patterns. Observations from the plot indicate an absence of significant patterns in our data trend, implying that both models adheres to the linearity assumption.  
+
+```{r echo=FALSE}
+ggplot(Final_model1, aes(x=.fitted, y=.resid)) +
+geom_point() + geom_smooth()+
+geom_hline(yintercept = 0)+
+ggtitle("Figure a1: Residuals vs Fitted Values-Model with Year as Categorical variable")
+```
+```{r echo=FALSE}
+ggplot(Final_model2, aes(x=.fitted, y=.resid)) +
+geom_point(colour = "purple") + geom_smooth(colour = "green4")+
+geom_hline(yintercept = 0) +
+ggtitle("Figure a2: Residuals vs Fitted Values-Model with Year as Numerical Variable")
+```
+
+
+
+## Independence Assumption  
+Our models are also based on the assumption that the residuals (errors) are not correlated, indicating that they are independent of each other. The assumption of independent errors is violated when successive errors are correlated. This typically occurs when the data for both dependent and independent variables are observed sequentially over a period of time-called time-series data. Since our dataset is not directly related to time, we can conclude that Independence assumption is met for both models.  
+
+## Normality Assumption  
+
+The normality assumption in a Linear Regression assumes that the residuals—the differences between observed and predicted values-should be normally distributed. To verify this assumption, various methods can be employed, including the examination of a histogram, or a normal Q-Q (Quantile-Quantile) Plot. In such plots (Q-Q Plot), a normal distribution is indicated when the data points closely align with the diagonal reference line. For our regression analysis to be deemed reliable, it's crucial that both models's residuals follow a normal distribution. To assess this, we will analyze three key indicators: the histogram plot of residuals, the normal Q-Q plot (Figures b and c), and the results of the Shapiro-Wilk test. Each of these methods provides a different perspective on the distribution of the residuals, helping to confirm or refute the normality assumption underlying both models.  
+
+The histogram plots for Model1 and Model2 are quite similar and reveal that the residuals' distribution exhibits somewhat more pronounced tails compared to a normal distribution. Similarly, the q-q plots in both models shows a minor deviation of the data points from the diagonal reference line, particularly at the tail ends, creating a slight S-shaped curve. These observations suggest that the residuals in both models may have heavier tails(as observed from the histogram plots) than what is typical for a normal distribution. This deviation could also be attributed to potential outliers in the data.  
+
+To further investigate whether the residuals of Model1 and Model2 conform to a normal distribution, we ran the Shapiro-Wilk test to statistically determine the normality of the residuals by evaluating the following hypothesis for both models:  
+
+
+$$
+\begin{align*}
+H_{0}: & \text{the sample data are significantly normally distributed} \\
+ 
+H_{a}: & \text{the sample data are not significantly normally distributed}
+\end{align*}
+$$
+Our initial suspicion is further corroborated by the results of the Shapiro-Wilk normality test. Using a significance level of $\alpha$=0.05, the Shapiro-Wilk test results for Model1 (W = 0.97429, p $\approx$ 0) and Model2 (W = 0.97441, p $\approx$ 0) indicate that the residuals do not follow a normal distribution. The p-value in both models is significantly lower than 0.05, leading us to reject the null hypothesis of normality. Consequently, it is evident that the normality condition is not satisfied in our dataset.  
+
+```{r echo=FALSE}
+# 1) Histogram of residuals
+ggplot(data = Life.expectancy, aes(x = residuals(Final_model1))) +
+    geom_histogram(binwidth = 0.6, col = "red", fill = "blue") +
+    labs(title = "Figure b1: Histogram of Residuals-Model with Year as Categorical Variable", x = "Residuals", y = "Count")
+
+# 2) Normal Q-Q plot
+ggplot(Life.expectancy, aes(sample=Final_model1$residuals)) +
+    stat_qq() +
+    stat_qq_line() +
+     ggtitle("Figure c1: QQ Plot of Residuals-Model with Year as Categorical variable")
+```
+
+```{r echo=FALSE}
+# 1) Histogram of residuals
+
+ggplot(data = Life.expectancy, aes(x = residuals(Final_model2))) +
+    geom_histogram(binwidth = 0.6, col = "green4", fill = "purple") +
+    labs(title = "Figure b2: Histogram for Residuals-Model with Year as Numerical Variable", x = "Residuals", y = "Count")
+
+ggplot(Life.expectancy, aes(sample=Final_model2$residuals)) +
+    stat_qq() +
+    stat_qq_line() +
+    ggtitle("Figure c2: QQ Plot of Residuals-Model with Year as Numerical variable")
+```
+
+## Independence Assumption  
+Our models are also based on the assumption that the residuals (errors) are not correlated, indicating that they are independent of each other. The assumption of independent errors is violated when successive errors are correlated. This typically occurs when the data for both dependent and independent variables are observed sequentially over a period of time-called time-series data. Since our dataset is not directly related to time, we can conclude that Independence assumption is met for both models.  
+
+
+## Normality Assumption  
+
+The normality assumption in a Linear Regression assumes that the residuals—the differences between observed and predicted values-should be normally distributed. To verify this assumption, various methods can be employed, including the examination of a histogram, or a normal Q-Q (Quantile-Quantile) Plot. In such plots (Q-Q Plot), a normal distribution is indicated when the data points closely align with the diagonal reference line. For our regression analysis to be deemed reliable, it's crucial that both models's residuals follow a normal distribution. To assess this, we will analyze three key indicators: the histogram plot of residuals, the normal Q-Q plot (Figures b and c), and the results of the Shapiro-Wilk test. Each of these methods provides a different perspective on the distribution of the residuals, helping to confirm or refute the normality assumption underlying both models.  
+
+The histogram plots for Model1 and Model2 are quite similar and reveal that the residuals' distribution exhibits somewhat more pronounced tails compared to a normal distribution. Similarly, the q-q plots in both models shows a minor deviation of the data points from the diagonal reference line, particularly at the tail ends, creating a slight S-shaped curve. These observations suggest that the residuals in both models may have heavier tails(as observed from the histogram plots) than what is typical for a normal distribution. This deviation could also be attributed to potential outliers in the data.  
+
+To further investigate whether the residuals of Model1 and Model2 conform to a normal distribution, we ran the Shapiro-Wilk test to statistically determine the normality of the residuals by evaluating the following hypothesis for both models:  
+
+
+$$
+\begin{align*}
+H_{0}: & \text{the sample data are significantly normally distributed} \\
+ 
+H_{a}: & \text{the sample data are not significantly normally distributed}
+\end{align*}
+$$
+
+Our initial suspicion is further corroborated by the results of the Shapiro-Wilk normality test. Using a significance level of $\alpha$=0.05, the Shapiro-Wilk test results for Model1 (W = 0.97429, p $\approx$ 0) and Model2 (W = 0.97441, p $\approx$ 0) indicate that the residuals do not follow a normal distribution. The p-value in both models is significantly lower than 0.05, leading us to reject the null hypothesis of normality. Consequently, it is evident that the normality condition is not satisfied in our dataset.  
+
+```{r echo=FALSE}
+# 1) Histogram of residuals
+ggplot(data = Life.expectancy, aes(x = residuals(Final_model1))) +
+    geom_histogram(binwidth = 0.6, col = "red", fill = "blue") +
+    labs(title = "Figure b1: Histogram of Residuals-Model with Year as Categorical Variable", x = "Residuals", y = "Count")
+
+# 2) Normal Q-Q plot
+ggplot(Life.expectancy, aes(sample=Final_model1$residuals)) +
+    stat_qq() +
+    stat_qq_line() +
+     ggtitle("Figure c1: QQ Plot of Residuals-Model with Year as Categorical variable")
+```
+
+```{r echo=FALSE}
+# 1) Histogram of residuals
+ggplot(data = Life.expectancy, aes(x = residuals(Final_model2))) +
+    geom_histogram(binwidth = 0.6, col = "green4", fill = "purple") +
+    labs(title = "Figure b2: Histogram for Residuals-Model with Year as Numerical Variable", x = "Residuals", y = "Count")
+
+ggplot(Life.expectancy, aes(sample=Final_model2$residuals)) +
+    stat_qq() +
+    stat_qq_line() +
+    ggtitle("Figure c2: QQ Plot of Residuals-Model with Year as Numerical variable")
+```
+
+```{r echo=FALSE}
+#Testing for Normality
+shapiro.test(residuals(Final_model1))
+```
+
+
+```{r echo=FALSE}
+#Testing for Normality
+shapiro.test(residuals(Final_model2))
+```
+## Multicollinearity Assumptions
+
+Multicollinearity in regression analysis where two or more independent variables in a model are highly correlated with each other. This means that one variable can be linearly predicted from the others with a substantial degree of accuracy. In such cases, it becomes difficult to isolate the individual effect of each independent variable on the dependent variable due to the shared variance among them. To check if our model satisfy the assumptions of multicollinearity, we examine the individual scatter plots and estimate the Variance Inflation Factors (VIF).
+
+Model1
+
+```{r}
+model <- lm(Life.expectancy~Adult.Mortality+infant.deaths+ BMI+Polio+Diphtheria+GDP+ Income.composition.of.resources,data=Life.expectancy)
+imcdiag(model, method = "VIF")
+```
+
+```{r}
+model <- lm(Life.expectancy~Adult.Mortality+Year+infant.deaths+ BMI+Polio+Diphtheria+GDP+ Income.composition.of.resources,data=Life.expectancy)
+imcdiag(model, method = "VIF")
+```
+
+Model2
+
+All VIF values are less than 5, so we can conclude that the multicollinearity assumption holds for both Model1 and Model2. 
+
+
+
+
+## Equal Variance Assumption  
+
+Another crucial assumption of linear regression models is that the error terms exhibit constant variance (homoscedasticity), Var($\epsilon_{i}$)=$\sigma^{2}$. However, in practical scenarios, one may encounter error terms with varying variances, a phenomenon known as heteroscedasticity.   
+
+Breusch-Pagan test for Homoscedasticity (heteroscedasticity is not present)  
+
+$H_{0}$: heteroscedasticity is not present  
+$H_{a}$: heteroscedasticity is present  
+
+To assess whether our models exhibit homoscedasticity, we employed scale location plots (Figures d1 and d2) and the studentized Breusch-Pagan test. The scale location plots(Figures d1 and d2) for both models reveal patterns of curvature, suggesting a deviation from equal variance. In other words, these patterns indicate potential heteroscedasticity. Further supporting this observation, the results of the Breusch-Pagan test for Model1 (BP = 193.3, p $\approx$ 0) and Model2 (BP = 191.48, p $\approx$ 0) lead us to reject the null hypothesis of homoscedasticity. Therefore, these findings indicate the presence of heteroscedasticity in both models.  
+
+```{r echo=FALSE}
+ggplot(Final_model1, aes(x=.fitted, y=sqrt(abs(.stdresid)))) +
+  geom_point(colour = "black") +
+  geom_hline(yintercept = 0) +
+  geom_smooth( colour = "blue")+
+   ggtitle("Figure d1: Scale-Location plot-Model with Year as Categorical Variable")
+```
+
+
+```{r echo=FALSE}
+library(lmtest)
+bptest(Final_model1)
+```
+
+```{r echo=FALSE}
+ggplot(Final_model2, aes(x=.fitted, y=sqrt(abs(.stdresid)))) +
+  geom_point(colour = "purple") +
+  geom_hline(yintercept = 0) +
+  geom_smooth( colour = "green4")+
+   ggtitle("Figure d2: Scale-Location plot-Model with Year as Numerical Variable")
+```
+```{r echo=FALSE}
+bptest(Final_model2)
+```
+## Box-Cox Transformations (Transformations for Nonnormallity and Heteroscedasticity)  
+
+Unequal variances and non-normality of error terms are often encountered concurrently in regression analysis. To address these deviations from the ideal linear regression model conditions, a transformation of the response variable Y is required. This is necessary because both the shape and spread of Y's distributions need modification. Additionally, transforming Y can also help linearize a relationship that is originally curvilinear. In our case, we utilized the Box-Cox transformation to correct for non-normality and heteroscedasticity in our models. This involved estimating the optimal value of lambda $\lambda$ (Figures e1 and e2) and then applying this value to perform Box-Cox transformations on both Model1 and Model2.  
+
+```{r include=FALSE}
+library(MASS)
+```
+
+
+```{r echo=FALSE}
+bc1=boxcox(Final_model1,lambda=seq(-3,3))
+```
+
+Figure e1
+
+
+```{r echo=FALSE}
+#extract best lambda
+bestlambda1=bc1$x[which(bc1$y==max(bc1$y))]
+bestlambda1
+```
+
+
+```{r echo=FALSE}
+bc2=boxcox(Final_model2,lambda=seq(-3,3))
+```
+
+Figure e2
+
+```{r echo=FALSE}
+#extract best lambda
+bestlambda2=bc2$x[which(bc2$y==max(bc2$y))]
+bestlambda2
+```
+
+```{r echo=FALSE}
+bcmodel1=lm((((Life.expectancy^1.060606)-1)/1.060606) ~I(Adult.Mortality^2)+factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+ BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources+factor(Continent):Adult.Mortality+
+factor(Continent):infant.deaths +factor(Continent):BMI+ factor(Continent):log(HIV.AIDS)+  factor(Continent):Income.composition.of.resources +  Adult.Mortality:infant.deaths+  infant.deaths:Income.composition.of.resources+  BMI:Diphtheria+GDP:log(Population),data=Life.expectancy)
+
+bcmodel2=lm((((Life.expectancy^1.060606)-1)/1.060606) ~I(Adult.Mortality^2)+Year+factor(Continent)+Adult.Mortality+ infant.deaths+ BMI+Diphtheria+ log(HIV.AIDS)+ GDP+log(Population)+Income.composition.of.resources+ factor(Continent):Adult.Mortality+factor(Continent):infant.deaths+factor(Continent):BMI+factor(Continent):log(HIV.AIDS)+factor(Continent):Income.composition.of.resources+Adult.Mortality:infant.deaths+infant.deaths:Income.composition.of.resources+BMI:Diphtheria+I(GDP^2)+Year+factor(Continent)+Adult.Mortality+ infant.deaths+ BMI+Diphtheria+ log(HIV.AIDS)+ GDP+log(Population)+Income.composition.of.resources+ factor(Continent):Adult.Mortality+factor(Continent):infant.deaths+factor(Continent):BMI+factor(Continent):log(HIV.AIDS)+factor(Continent):Income.composition.of.resources+Adult.Mortality:infant.deaths+infant.deaths:Income.composition.of.resources+BMI:Diphtheria+GDP:log(Population)+Diphtheria:Income.composition.of.resources,data=Life.expectancy)
+```
+
+```{r echo=FALSE}
+library(lmtest)
+bptest(bcmodel1)
+```
+
+```{r echo=FALSE}
+#Testing for Normality
+shapiro.test(residuals(bcmodel1))
+```
+
+```{r echo=FALSE}
+#Testing for Normality
+shapiro.test(residuals(bcmodel2))
+```
+
+```{r echo=FALSE}
+library(lmtest)
+bptest(bcmodel2)
+```
+
+
+
+
+
+After determining the optimal lambda value for the Box-Cox transformation to be $\lambda$=1.060606 for both models, we proceeded to reassess the models for improvements in homoscedasticity and normality. This involved re-running both the Breusch-Pagan test for homoscedasticity and the Shapiro-Wilk test for normality on the Box-Cox transformed models.  
+
+The results of the Shapiro-Wilk test for Model1 (W = 0.97395, p $\approx$ 0) and Model2 (W = 0.97407, p $\approx$ 0) suggest that the residuals do not follow a normal distribution. Similarly, the Breusch-Pagan test results for Model1 (BP = 192.29, p $\approx$ 0) and Model2 (BP = 190.34, p $\approx$ 0) imply the persistence of heteroscedasticity. Given that the p-values in both tests for both models are significantly lower than the significant level of $\alpha$=0.05, we reject the null hypothesis. This leads us to conclude that, despite the transformations, the residuals in both models are not normally distributed and that the issue of heteroscedasticity remains unresolved.  
+
+However, it's important to consider the implications of the Central Limit Theorem, especially in the context of large sample sizes. The Central Limit Theorem posits that as the sample size increases, the sampling distribution of the regression coefficients approaches a normal distribution, irrespective of the residual distribution. This principle ensures that the estimates of the coefficients and their standard errors are reliable, even when the residuals don't perfectly align with normal distribution. Based on this understanding, we can infer that the normality assumption for both models is essentially met, despite the non-normal distribution of residuals observed in our tests.  
+
+## Influential Points and Outliers  
+
+Outliers and influential points are important concepts in statistical analysis, particularly in regression analysis because they can significantly impact the results of our models. Outliers are data points that are significantly different from the majority of the data. They can be much higher or lower than the surrounding data points.  Influential points are data points that have a significant impact on the fit of the model. Changing these points can lead to significantly different results.  
+
+```{r echo=FALSE}
+# 1) Residuals vs Leverage plot
+plot(Final_model1,which=5)
+```
+
+Figure f1
+
+```{r echo=FALSE}
+# 1) Residuals vs Leverage plot
+plot(Final_model2,which=5)
+```
+
+Figure f2
+
+```{r echo=FALSE}
+# 2) Cook’s Distance
+plot(Final_model1,pch=18,col="red",which=c(4))
+
+```
+
+Figure g1
+
+```{r echo=FALSE}
+# 2) Cook’s Distance
+plot(Final_model2,pch=18,col="red",which=c(4))
+
+```
+
+Figure g2
+
+
+```{r echo=FALSE}
+Life.expectancy[cooks.distance(Final_model1)>0.5,] #have Cook statistics larger than 0.5
+```
+
+```{r echo=FALSE}
+Life.expectancy[cooks.distance(Final_model2)>0.5,] #have Cook statistics larger than 0.5
+```
+
+```{r echo=FALSE}
+# 3) Leverage points
+lev=hatvalues(Final_model1)
+p = length(coef(Final_model1))
+n = nrow(Life.expectancy)
+outlier2p = lev[lev>(2*p/n)]
+outlier3p = lev[lev>(3*p/n)]
+print("h_I>2p/n, outliers are")
+print(outlier2p)
+```
+
+```{r echo=FALSE}
+print("h_I>3p/n, outliers are")
+print(outlier3p)
+```
+
+```{r echo=FALSE}
+# 3) Leverage points
+lev2=hatvalues(Final_model2)
+p2 = length(coef(Final_model2))
+n2 = nrow(Life.expectancy)
+outlier2p2 = lev2[lev2>(2*p2/n2)]
+outlier3p2 = lev2[lev2>(3*p2/n2)]
+print("h_I>2p/n, outliers are")
+print(outlier2p2)
+
+print("h_I>3p/n, outliers are")
+print(outlier3p2)
+```
+
+```{r echo=FALSE}
+plot(rownames(Life.expectancy),lev, main = "Figure h1: Leverage in Life Expectancy Dataset", xlab="observation",
+ylab = "Leverage Value")
+abline(h = 2 *p/n, lty = 1)
+abline(h = 3 *p/n, lty = 1)
+```
+
+```{r echo=FALSE}
+plot(rownames(Life.expectancy),lev, main = "Figure h2: Leverage in Life Expectancy Dataset", xlab="observation",
+ylab = "Leverage Value")
+abline(h = 2 *p2/n2, lty = 1)
+abline(h = 3 *p2/n2, lty = 1)
+```
+
+To assess our models for the presence of outliers and influential points, we examined the residual vs leverage plots (shown in Figures f1 and f2), evaluated Cook's distance (illustrated in Figures g1 and g2), and analyzed leverage points (shown in Figures h1 and h2). From the residual vs leverage and Cook's distance plots of both Model1 and model2 , we observe that there are no visible outliers in the models. However, the leverage points plot illustrates that some high leverage or influential points are present in each model which could potentially impact the fit of the models. These high leverage points could be attributed to errors in data collection. To address this anomaly and ensure the integrity of our dataset, it is necessary to exclude these influential observations from our data.  
+
+
+```{r include=FALSE}
+# h_I>2p/n
+Life.expectancy_cleaned <- Life.expectancy[-c(53,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,203,235,236,237,238,239, 240,264,267,268,269,270,271,272,320,323,328,329,332,333,380,381,382,383,384,429,475,478,498,500,502,503,504,
+505,509,510,512,544,625,626,627,628,629,630,631,632,633,634,635,636,637,638,639,640,686,795,796,797,798,799,
+834,835,837,840,842,844,848,1030,1088,1105,1106,1107,1108,1109,1110,1111,1112,1113,1114,1115,1116,1117,1118,
+1119,1120,1135,1217,1218,1224,1225,1226,1227,1228,1229,1230,1231,1232,1257,1258,1259,1264,1328,1389,1426,1429,1433,1434,1435,1436,1437,1448,1522,1525,1528,1529,1530,1531,1532,1533,1534,1535,1536),]
+```
+
+To further improve our models following the exclusion of influential data points and address issues of non-normality and heteroscedasticity, we opted to rerun our analyses using the refined dataset. This time, we incorporated the 'adult.mortality' variable as a higher-order term in both models. This modification resulted in a slight increase in the adjusted R-squared values for Model1 (0.9057) and Model2 (0.8986). To confirm that these newly fitted models align with the assumptions of linear regression, another regression diagnostics was tested for the models.  
+
+```{r include=FALSE}
+#More higher order model
+Final_modela <- lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+I(Adult.Mortality^2)+infant.deaths+ BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources+factor(Continent):Adult.Mortality+
+factor(Continent):infant.deaths +factor(Continent):BMI+ factor(Continent):log(HIV.AIDS)+  factor(Continent):Income.composition.of.resources +  Adult.Mortality:infant.deaths+  infant.deaths:Income.composition.of.resources+  BMI:Diphtheria+GDP:log(Population),data=Life.expectancy_cleaned)
+summary(Final_modela) 
+```
+
+After removing the influential points from our dataset, we examine the Regression Diagnostics again;  
+
+## Linearity Assumption  
+
+```{r echo=FALSE}
+ggplot(Final_modela, aes(x=.fitted, y=.resid)) +
+geom_point() + geom_smooth()+
+geom_hline(yintercept = 0)
+```
+From the output, we observe that the pattern is linear, so we conclude that linearity assumption is met for our model.  
+
+## Independence Assumption  
+A linear regression model assumes that the residuals (errors) of the model are uncorrelated, meaning they are mutually independent of each other. To check for independence, we will observe;  
+
+The Plot of Residuals vs Fitted Values: This helps in identifying any obvious patterns. If the residuals are randomly distributed around zero and show no clear pattern, the assumption of independence is likely met.  
+
+```{r echo=FALSE}
+# Plot of Residuals vs Fitted Values
+plot(Final_modela, which = 1)
+```
+
+From the Residuals vs Fitted Values plot, no obvious pattern was observed, therefore we can conclude that the Independence Assumption is met.  
+
+## Normality Assumption  
+
+The normality assumption in a Linear Regression Model assumes the errors between the observed values and predicted values of the model to be normally distributed. To check for normality, we will make use of;  
+
+1) Histogram of residuals  
+2) Normal Q-Q plot  
+3) Shapiro-Wilk test  
+
+```{r echo=FALSE}
+# 1) Histogram of residuals
+ggplot(data = Life.expectancy_cleaned, aes(x = residuals(Final_modela))) +
+    geom_histogram(binwidth = 0.6, col = "red", fill = "blue") +
+    labs(title = "Histogram for Residuals", x = "Residuals", y = "Count")
+```
+
+We notice from the histogram plot that the distribution of the residuals has slightly heavier tails than a normal distribution.  
+
+```{r echo=FALSE}
+# 2) Normal Q-Q plot
+ggplot(Life.expectancy_cleaned, aes(sample=Final_modela$residuals)) +
+    stat_qq() +
+    stat_qq_line()
+```
+
+From the q-q plot, we do not notice much difference after the influential points have been removed.  
+
+3) Shapiro-Wilk test  
+We will be testing the hypothesis:  
+
+$$
+\begin{align*}
+H_{0}: & \text{the sample data are significantly normally distributed} \\
+ 
+H_{a}: & \text{the sample data are not significantly normally distributed}
+\end{align*}
+$$
+```{r echo=FALSE}
+#Testing for Normality
+shapiro.test(residuals(Final_modela))
+```
+
+There is not much difference in the new P-value, it is also approximately 0 which is less than the significant level of $\alpha$=0.05, therefore we reject the null hypothesis and conclude that residuals of the sample data are not significantly normally distributed.  
+As stated earlier, for large sample sizes, the Central Limit Theorem comes into play. Consequently, we can conclude that the normality assumption is met.  
+
+
+to assess the assumption of equal variance.
+```{r echo=FALSE}
+ggplot(Final_modela, aes(x=.fitted, y=sqrt(abs(.stdresid)))) +
+  geom_point(colour = "black") +
+  geom_hline(yintercept = 0) +
+  geom_smooth( colour = "blue")+
+   ggtitle("Scale-Location plot : Standardized Residual vs Fitted values")
+```
+
+
+```{r echo=FALSE}
+bptest(Final_modela)
+```
+
+## Final model when using Year variable as Categorical is:  
+
+```{r include=FALSE}
+Final_modela <- lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+I(Adult.Mortality^2)+infant.deaths+ BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources+factor(Continent):Adult.Mortality+
+factor(Continent):infant.deaths +factor(Continent):BMI+ factor(Continent):log(HIV.AIDS)+  factor(Continent):Income.composition.of.resources +  Adult.Mortality:infant.deaths+  infant.deaths:Income.composition.of.resources+  BMI:Diphtheria+GDP:log(Population),data=Life.expectancy_cleaned)
+summary(Final_modela)
+```
+
+The fitted model for life expectancy is:
+
+$$
+\begin{align*}
+\hat{Y} &= \beta_{0} + \beta_{1}factor(year_category)Y2 + \beta_{2}factor(year_category)Y3 + \beta_{3}factor(Continent)Americas+ \beta_{4}factor(Continent)Asia \\ 
+        & + \beta_{5}factor(Continent)Europe + \beta_{6}factor(Continent)Oceania + \beta_{7}Adult.Mortality+ \beta_{8}I(Adult.Mortality^2) \\
+        & +\beta_{9}infant.deaths+\beta_{10}BMI+ \beta_{11}Polio+ \beta_{12}Diphtheria + \beta_{13}log(HIV.AIDS) + \beta_{14}GDP + \beta_{15}log(Population)  \\ 
+        & + \beta_{16}Income.composition.of.resources + \beta_{17}factor(Continent)Americas:Adult.Mortality \\
+        & + \beta_{18}factor(Continent)Asia:Adult.Mortality + \beta_{19}factor(Continent)Europe:Adult.Mortality \\
+        & + \beta_{20}factor(Continent)Oceania:Adult.Mortality + \beta_{21}factor(Continent)Americas:infant.deaths \\
+        & + \beta_{22}factor(Continent)Asia:infant.deaths + \beta_{23}factor(Continent)Europe:infant.deaths \\
+        & + \beta_{24}factor(Continent)Oceania:infant.deaths+ \beta_{25}factor(Continent)Americas:BMI \\
+        & + \beta_{26}factor(Continent)Asia:BMI + \beta_{27}factor(Continent)Europe:BMI \\
+        & + \beta_{28}factor(Continent)Oceania:BMI + \beta_{29}factor(Continent)Americas:log(HIV.AIDS) \\
+        & + \beta_{30}factor(Continent)Asia:log(HIV.AIDS) + \beta_{31}factor(Continent)Europe:log(HIV.AIDS) \\
+        & + \beta_{32}factor(Continent)Oceania:log(HIV.AIDS) \\
+        & + \beta_{33}factor(Continent)Americas:Income.composition.of.resources \\
+        & + \beta_{34}factor(Continent)Asia:Income.composition.of.resources \\
+        & + \beta_{35}factor(Continent)Europe:Income.composition.of.resources \\
+        & + \beta_{36}factor(Continent)Oceania:Income.composition.of.resources \\
+        & + \beta_{37}Adult.Mortality:infant.deaths +\beta_{38}infant.deaths:Income.composition.of.resources \\
+        & + \beta_{39}BMI:Diphtheria + \beta_{40}GDP:log(Population)
+\end{align*}
+$$
+
+$$
+\begin{align*}
+\widehat{Life.expectancy} = & 49.5811221551 + 0.2109242002 \cdot \text{factor(year\_category)Y2} + 0.4035019731 \cdot \text{factor(year\_category)Y3} \\
+& + 8.5350857826 \cdot \text{factor(Continent)Americas} + 14.5760189940 \cdot \text{factor(Continent)Asia} \\
+& - 15.1430589326 \cdot \text{factor(Continent)Europe} - 5.3436486502 \cdot \text{factor(Continent)Oceania} \\
+& + 0.0148812388 \cdot \text{Adult.Mortality} - 0.0000399387 \cdot \text{I(Adult.Mortality^2)} \\
+& - 0.0624768939 \cdot \text{infant.deaths} + 0.1342119500 \cdot \text{BMI} + 0.0090409152 \cdot \text{Polio} \\
+& + 0.0490784332 \cdot \text{Diphtheria} - 2.5363329768 \cdot \log(\text{HIV.AIDS}) - 0.0000571314 \cdot \text{GDP} \\
+& - 0.1270728361 \cdot \log(\text{Population}) + 15.8478964149 \cdot \text{Income.composition.of.resources} \\
+& - 0.0192701665 \cdot \text{factor(Continent)Americas:Adult.Mortality} \\
+& - 0.0359048470 \cdot \text{factor(Continent)Asia:Adult.Mortality} \\
+& - 0.0291242251 \cdot \text{factor(Continent)Europe:Adult.Mortality} \\
+& - 0.0052384530 \cdot \text{factor(Continent)Oceania:Adult.Mortality} \\
+& - 0.021808495 \cdot \text{factor(Continent)Americas:infant.deaths} \\
+& - 0.005580242 \cdot \text{factor(Continent)Asia:infant.deaths} \\
+& + 0.003049510 \cdot \text{factor(Continent)Europe:infant.deaths} \\
+& + 22.431869827 \cdot \text{factor(Continent)Oceania:infant.deaths} \\
+& - 0.038879516 \cdot \text{factor(Continent)Americas:BMI} \\
+& - 0.036938134 \cdot \text{factor(Continent)Asia:BMI} \\
+& - 0.044112877 \cdot \text{factor(Continent)Europe:BMI} \\
+& + 0.175932007 \cdot \text{factor(Continent)Oceania:BMI} \\
+& + 1.5223247144 \cdot \text{factor(Continent)Americas:log(HIV.AIDS)} \\
+& + 1.9833872045 \cdot \text{factor(Continent)Asia:log(HIV.AIDS)} \\
+& - 0.9910247318 \cdot \text{factor(Continent)Europe:log(HIV.AIDS)} \\
+& - 101.282770214 \cdot \text{factor(Continent)Oceania:log(HIV.AIDS)} \\
+& + 5.281486135 \cdot \text{factor(Continent)Americas:Income.composition.of.resources} \\
+& - 5.402399103 \cdot \text{factor(Continent)Asia:Income.composition.of.resources} \\
+& + 25.955466182 \cdot \text{factor(Continent)Europe:Income.composition.of.resources} \\
+& - 70.989239266 \cdot \text{factor(Continent)Oceania:Income.composition.of.resources} \\
+& + 0.0000651614 \cdot \text{Adult.Mortality:infant.deaths} \\
+& + 0.1096639500 \cdot \text{infant.deaths:Income.composition.of.resources} \\
+& - 0.0010004645 \cdot \text{BMI:Diphtheria} \\
+& - 0.0000006714 \cdot \text{GDP:log(Population)}
+\end{align*}
+$$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Prediction  
+Overall, we will use the final model to do prediction. We want to find out what the actual life expectancy for a country. We have set assumptions for a country's Life expectancy. The assumptions are: Adult.Mortality= 200 deaths per 1000 population.  year_category="Y1"(2000-2005),
+Continent="Asia", infant.deaths=70 infants death per 1000 population,
+Average Body Mass Index of entire population =30, 
+Polio (Pol3) immunization coverage among 1-year-olds is 30(%) ,
+Diphtheria tetanus toxoid and pertussis (DTP3) immunization coverage among 1-year-olds is 80(%),Deaths per 1000 live births HIV/AIDS (0-4 years) is 0.1, 
+Gross Domestic Product per capita (in USD) is 4000, Population =9,880,000,
+Human Development Index in terms of income composition of resources (index ranging from 0 to 1)= 0.5  
+```{r echo=FALSE}
+predict(Final_modela, newdata= data.frame(Adult.Mortality=200, year_category="Y1",Continent="Asia",infant.deaths=70,BMI=30, Polio=80,Diphtheria=80, HIV.AIDS=0.1, GDP=4000, Population=9,880,000,  Income.composition.of.resources= 0.5),interval="predict")
+```
+From the output, we can say that we are 95% confident that the life expectancy for this country is 68.5 years old.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Appendix  
+
+Full_Model_factor, full model for the variable factor(Year).
+```{r echo=FALSE}
+fullmodel_factor=lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+Hepatitis.B+Measles+BMI+Polio+log(Total.expenditure)+Diphtheria+log(HIV.AIDS)+GDP+log(Population)+thinness..1.19.years+Income.composition.of.resources+factor(Alcohol_index), data=Life.expectancy)
+summary(fullmodel_factor)
+```
+
+Reduced_Model_factor, reduced model for the variable factor(Year)
+```{r echo=FALSE}
+reducedfullmodel_factor1= lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+log(Population)+Income.composition.of.resources+factor(Alcohol_index), data=Life.expectancy)
+summary(reducedfullmodel_factor1)
+```
+
+Stepwise_Model_factor
+```{r}
+# Model selection procedures
+stepmod_project=ols_step_both_p(fullmodel_factor, pent=0.05, prem=0.1, details=FALSE)
+summary(stepmod_project$model) #R2=0.8502
+```
+
+BIC_Model
+```{r}
+BIC.lm1 <- lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+ BMI+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources, data=Life.expectancy)
+summary(BIC.lm1) #R2=0.8493
+
+BIC.lm2 <- lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+ BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources, data=Life.expectancy)
+summary(BIC.lm2) #R2=0.8502 
+```
+
+Interaction_Model_factor
+```{r}
+#Interaction model # Hypothesis Statement for Individual T-tests (Interaction Terms):
+interction_model <- lm(Life.expectancy~(factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+ BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources)^2,data=Life.expectancy)
+summary(interction_model) 
+
+#The best interaction model
+interaction_best_lm <- lm(Life.expectancy~factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+ BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources+factor(Continent):Adult.Mortality+
+factor(Continent):infant.deaths +factor(Continent):BMI+ factor(Continent):log(HIV.AIDS)+  factor(Continent):Income.composition.of.resources +  Adult.Mortality:infant.deaths+  infant.deaths:Income.composition.of.resources+  BMI:Diphtheria+GDP:log(Population),data=Life.expectancy)
+summary(interaction_best_lm) #R2=0.8822 
+```
+
+Higher_order_Model_factor
+```{r}
+Higher_order_lm <- lm(Life.expectancy~I(Adult.Mortality^2)+factor(year_category)+factor(Continent)+Adult.Mortality+infant.deaths+ BMI+Polio+Diphtheria+log(HIV.AIDS)+GDP+ log(Population)+Income.composition.of.resources+factor(Continent):Adult.Mortality+
+factor(Continent):infant.deaths +factor(Continent):BMI+ factor(Continent):log(HIV.AIDS)+  factor(Continent):Income.composition.of.resources +  Adult.Mortality:infant.deaths+  infant.deaths:Income.composition.of.resources+  BMI:Diphtheria+GDP:log(Population),data=Life.expectancy)
+summary(Higher_order_lm) #R2=0.889 
+```
+
+Higher_order_Model_number
+```{r}
+Higher_order_lm <- lm(Life.expectancy~I(Adult.Mortality^2)+Year+factor(Continent)+Adult.Mortality+ infant.deaths+ BMI+Diphtheria+ log(HIV.AIDS)+ GDP+log(Population)+Income.composition.of.resources+ factor(Continent):Adult.Mortality+factor(Continent):infant.deaths+factor(Continent):BMI+factor(Continent):log(HIV.AIDS)+factor(Continent):Income.composition.of.resources+Adult.Mortality:infant.deaths+infant.deaths:Income.composition.of.resources+BMI:Diphtheria+GDP:log(Population)+Diphtheria:Income.composition.of.resources,data=Life.expectancy)
+summary(Higher_order_lm) #0.8896
+```
+
+
+
